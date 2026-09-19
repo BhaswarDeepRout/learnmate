@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     # Third Party APIs
     GEMINI_API_KEY: str | None = None
     GOOGLE_CLIENT_ID: str | None = None
+    SUPABASE_URL: str | None = None
+    SUPABASE_KEY: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 

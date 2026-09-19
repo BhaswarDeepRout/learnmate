@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 import os
 import google.generativeai as genai
+from supabase import create_client, Client
 
 from app.schemas.user import UserResponse
 from app.auth import get_current_user
+from app.config import settings
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -11,6 +13,27 @@ router = APIRouter()
 class DoubtRequest(BaseModel):
     query: str
     topic_context: str = ""
+
+def get_supabase() -> Client:
+    # Safely get supabase envs configured in the settings or env
+    url = getattr(settings, "SUPABASE_URL", os.getenv("SUPABASE_URL"))
+    key = getattr(settings, "SUPABASE_KEY", os.getenv("SUPABASE_KEY"))
+    if not url or not key:
+        raise HTTPException(status_code=500, detail="Supabase configuration missing.")
+    return create_client(url, key)
+
+@router.get("/history")
+def get_chat_history(current_user: UserResponse = Depends(get_current_user)):
+    try:
+        supabase = get_supabase()
+        res = supabase.table('chat_history').select('history').eq('user_id', str(current_user.id)).execute()
+        if res.data and len(res.data) > 0:
+            return {"history": res.data[0]['history']}
+        return {"history": []}
+    except Exception as e:
+        # Fallback to empty history on error, rather than breaking the page
+        print(f"Supabase GET Error: {e}")
+        return {"history": []}
 
 @router.post("/solve")
 def solve_doubt(
@@ -20,15 +43,53 @@ def solve_doubt(
     try:
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key or api_key == "your_api_key_here":
-            # Fallback mock for development if no key configured or if it looks invalid
-            return {"answer": f"Simulated AI Tutor Response for: '{request.query}'. (Please configure a valid GEMINI_API_KEY in Render dashboard to enable real AI)."}
+            return {"answer": f"Simulated AI Tutor Response for: '{request.query}'. (Please configure a valid GEMINI_API_KEY)."}
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-flash-latest')
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
-        prompt = f"You are a helpful engineering tutor focused on SSC JE Civil Engineering. Answer this student's question clearly and concisely.\n\nContext: {request.topic_context}\n\nQuestion: {request.query}"
+        # Connect to Supabase to get history
+        supabase = get_supabase()
+        user_id_str = str(current_user.id)
+        res = supabase.table('chat_history').select('history').eq('user_id', user_id_str).execute()
         
-        response = model.generate_content(prompt)
+        chat_history = []
+        if res.data and len(res.data) > 0:
+            chat_history = res.data[0]['history']
+
+        # Determine prompt format. If it's the first message, insert the context instructions.
+        question = request.query
+        if request.topic_context and len(chat_history) == 0:
+            question = f"Context: {request.topic_context}\n\nQuestion: {question}"
+
+        # Initialize the chat with the history loaded from Supabase.
+        # Gemini expects roles to be either 'user' or 'model'
+        chat = model.start_chat(history=chat_history)
+        
+        # Send new message
+        if len(chat_history) == 0:
+            instruction = "You are a helpful engineering tutor focused on SSC JE Civil Engineering. Answer clearly and concisely.\n\n"
+            response = chat.send_message(instruction + question)
+        else:
+            response = chat.send_message(question)
+
+        # Build the updated history arrays (must map to standard Gemini types)
+        # Using chat.history which automatically tracks the session
+        updated_history = []
+        for msg in chat.history:
+            updated_history.append({
+                "role": msg.role,
+                "parts": [part.text for part in msg.parts]
+            })
+
+        # Save back to Supabase
+        supabase.table('chat_history').upsert({
+            'user_id': user_id_str,
+            'history': updated_history
+        }).execute()
+
         return {"answer": response.text}
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI Service Error: {str(e)}")
+        print(f"AI/DB Service Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI/DB Service Error: {str(e)}")

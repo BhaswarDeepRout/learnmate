@@ -8,17 +8,35 @@ export default function AITutor() {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const [messages, setMessages] = useState([
-    {
-      role: "ai",
-      text:
-        "Hi! I'm your LearnMate Civil AI Tutor. Ask me any doubts regarding SSC JE Civil Engineering concepts!"
-    }
-  ]);
+  const defaultMessage = {
+    role: "ai",
+    text: "Hi! I'm your LearnMate Civil AI Tutor. Ask me any doubts regarding SSC JE Civil Engineering concepts!"
+  };
+
+  const [messages, setMessages] = useState([defaultMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  useEffect(() => {
+    // Load existing chat history from Supabase via backend on mount
+    async function fetchHistory() {
+      try {
+        const data = await aiTutorAPI.getHistory();
+        if (data.history && data.history.length > 0) {
+          const loadedMessages = data.history.map((msg) => ({
+            role: msg.role === "model" ? "ai" : "user",
+            text: msg.parts ? msg.parts.join("\n") : ""
+          }));
+          setMessages(loadedMessages);
+        }
+      } catch (err) {
+        console.error("Failed to load chat history:", err);
+      }
+    }
+    fetchHistory();
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
