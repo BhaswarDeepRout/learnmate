@@ -15,7 +15,7 @@ class DoubtRequest(BaseModel):
     topic_context: str = ""
 
 def get_supabase() -> Client:
-    # Safely get supabase envs configured in the settings or env
+    # get supabase envs
     url = getattr(settings, "SUPABASE_URL", os.getenv("SUPABASE_URL"))
     key = getattr(settings, "SUPABASE_KEY", os.getenv("SUPABASE_KEY"))
     if not url or not key:
@@ -31,7 +31,7 @@ def get_chat_history(current_user: UserResponse = Depends(get_current_user)):
             return {"history": res.data[0]['history']}
         return {"history": []}
     except Exception as e:
-        # Fallback to empty history on error, rather than breaking the page
+        # fallback to empty history
         print(f"Supabase GET Error: {e}")
         return {"history": []}
 
@@ -48,7 +48,7 @@ def solve_doubt(
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
-        # Connect to Supabase to get history
+        # connect supabase to get history
         supabase = get_supabase()
         user_id_str = str(current_user.id)
         res = supabase.table('chat_history').select('history').eq('user_id', user_id_str).execute()
@@ -57,24 +57,21 @@ def solve_doubt(
         if res.data and len(res.data) > 0:
             chat_history = res.data[0]['history']
 
-        # Determine prompt format. If it's the first message, insert the context instructions.
+        # if first message, insert context
         question = request.query
         if request.topic_context and len(chat_history) == 0:
             question = f"Context: {request.topic_context}\n\nQuestion: {question}"
 
-        # Initialize the chat with the history loaded from Supabase.
-        # Gemini expects roles to be either 'user' or 'model'
+        # start chat with loaded history
         chat = model.start_chat(history=chat_history)
         
-        # Send new message
         if len(chat_history) == 0:
             instruction = "You are a helpful engineering tutor focused on SSC JE Civil Engineering. Answer clearly and concisely.\n\n"
             response = chat.send_message(instruction + question)
         else:
             response = chat.send_message(question)
 
-        # Build the updated history arrays (must map to standard Gemini types)
-        # Using chat.history which automatically tracks the session
+        # build updated history arrays which tracks the session
         updated_history = []
         for msg in chat.history:
             updated_history.append({
@@ -82,7 +79,7 @@ def solve_doubt(
                 "parts": [part.text for part in msg.parts]
             })
 
-        # Save back to Supabase
+        # save back to Supabase
         supabase.table('chat_history').upsert({
             'user_id': user_id_str,
             'history': updated_history
