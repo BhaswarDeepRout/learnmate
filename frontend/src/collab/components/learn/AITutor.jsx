@@ -2,6 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { Bot, User, Loader2 } from "lucide-react";
 import PageIntro from "../common/PageIntro";
 import { aiTutorAPI } from "../../../api/aiTutor";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 
 export default function AITutor() {
   const [input, setInput] = useState("");
@@ -95,7 +100,20 @@ export default function AITutor() {
                   {message.role === 'user' ? <User size={12} /> : <Bot size={12} />}
                   {message.role === 'user' ? 'You' : 'AI Tutor'}
                 </div>
-                <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</div>
+                <div className="text-sm leading-relaxed overflow-x-auto">
+                  {message.role === 'user' ? (
+                    <div className="whitespace-pre-wrap">{message.text}</div>
+                  ) : (
+                    <div className="markdown-body">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                      >
+                        {message.text}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ))}

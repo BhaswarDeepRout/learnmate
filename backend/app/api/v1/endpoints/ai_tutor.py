@@ -72,13 +72,35 @@ def solve_doubt(
         else:
             response = chat.send_message(question)
 
+        # Safe extraction for the AI's current response
+        try:
+            answer_text = response.text
+        except ValueError:
+            # Reconstruct answer safely if shortcut strictly fails or is multi-part
+            answer_text = "".join(
+                part.text for part in response.parts if hasattr(part, 'text')
+            )
+
+        # If response was blocked by safety filters, response.parts might be empty
+        if not answer_text:
+            answer_text = "I'm sorry, I cannot provide an answer to that due to AI safety guardrails or an empty model response. Please rephrase your query."
+
         # build updated history arrays which tracks the session
         updated_history = []
         for msg in chat.history:
-            updated_history.append({
-                "role": msg.role,
-                "parts": [part.text for part in msg.parts]
-            })
+            safe_parts = []
+            for part in msg.parts:
+                try:
+                    if hasattr(part, 'text') and part.text:
+                        safe_parts.append(part.text)
+                except ValueError:
+                    pass
+
+            if safe_parts:
+                updated_history.append({
+                    "role": msg.role,
+                    "parts": safe_parts
+                })
 
         # save back to Supabase
         supabase.table('chat_history').upsert({
@@ -86,7 +108,7 @@ def solve_doubt(
             'history': updated_history
         }).execute()
 
-        return {"answer": response.text}
+        return {"answer": answer_text}
 
     except Exception as e:
         print(f"AI/DB Service Error: {str(e)}")
