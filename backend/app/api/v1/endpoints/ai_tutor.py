@@ -41,12 +41,13 @@ def solve_doubt(
     current_user: UserResponse = Depends(get_current_user)
 ):
     try:
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = getattr(settings, "GEMINI_API_KEY", None) or os.getenv("GEMINI_API_KEY")
+        print(f"DEBUG: api_key is populated: {bool(api_key)}")
         if not api_key or api_key == "your_api_key_here":
             return {"answer": f"Simulated AI Tutor Response for: '{request.query}'. (Please configure a valid GEMINI_API_KEY)."}
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        model = genai.GenerativeModel('gemini-3.6-flash')
 
         # connect supabase to get history
         supabase = get_supabase()
