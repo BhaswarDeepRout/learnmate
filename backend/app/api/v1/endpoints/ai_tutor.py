@@ -47,7 +47,7 @@ def solve_doubt(
             return {"answer": f"Simulated AI Tutor Response for: '{request.query}'. (Please configure a valid GEMINI_API_KEY)."}
 
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-3.6-flash')
+        model = genai.GenerativeModel('gemini-flash-latest')
 
         # connect supabase to get history
         supabase = get_supabase()
